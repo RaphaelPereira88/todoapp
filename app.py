@@ -17,7 +17,8 @@ class Todo(db.Model):                       # to link to SQLAlchemy, class shoul
   __tablename__ = 'todos'
   id = db.Column(db.Integer, primary_key=True)
   description = db.Column(db.String(), nullable=False)
-  completed = db.Column(db.Boolean, nullable=False)
+  completed = db.Column(db.Boolean, nullable=True)
+  list_id = db.Column(db.Integer, db.ForeignKey('todolists.id'), nullable= False )
 
                                             # to give useful debugging statements when objs are printed,
                                             # we can define __repr__ to return a to do with the id and desc
@@ -31,13 +32,20 @@ class Todo(db.Model):                       # to link to SQLAlchemy, class shoul
 
                                             # create url and url handler on our server, by defining route that listens to todos/create
 
+class Todolist(db.Model):
+  __tablename__ = 'todolists'
+  id = db.Column(db.Integer, primary_key=True)
+  name = db.Column(db.String(), nullable=False)
+  todos = db.relationship('Todo', backref='list', lazy =True)
+
+
 @app.route('/todos/create', methods=['POST'])
 def create_todo():
   error = False
   body = {}
-  try:                                   #to get that field description
+  try:                                              #to get that field description
     description = request.get_json()['description'] # Json object  come back to us as a dictionary with key description
-                                         # use description to create new todo object
+                                                    # use description to create new todo object
     todo = Todo(description=description, completed=False) #create a todo and store it to our database
     db.session.add(todo)
     db.session.commit()
@@ -47,7 +55,7 @@ def create_todo():
   except:
     error = True
     db.session.rollback()
-                                        # could be useful debugging statement, ->
+                                        # could be useful debugging statement, 
     print(sys.exc_info())               # but terminal may also raise error for you
   finally:
     db.session.close()
@@ -83,9 +91,13 @@ def delete_todo(todo_id):
     db.session.rollback()
   finally:
     db.session.close()
-  return jsonify({ 'success': True })
+    return jsonify({ 'success': True })
 
+
+@app.route('/lists/<list_id>')
+def get_list_todos(list_id):
+  return render_template('index.html', data=Todo.query.filter_by(list_id = list_id).order_by('id').all()) #will display everything order by ID,order_by('id')
 
 @app.route('/')
 def index():
-  return render_template('index.html', todos=Todo.query.order_by('id').all()) #will display everything order by ID,order_by('id')
+  return redirect (url_for('get_list_todos', list_id =1))
