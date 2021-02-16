@@ -17,7 +17,7 @@ class Todo(db.Model):                       # to link to SQLAlchemy, class shoul
   __tablename__ = 'todos'
   id = db.Column(db.Integer, primary_key=True)
   description = db.Column(db.String(), nullable=False)
-  completed = db.Column(db.Boolean, nullable=True)
+  completed = db.Column(db.Boolean, nullable=False)
   list_id = db.Column(db.Integer, db.ForeignKey('todolists.id'), nullable= False )
 
                                             # to give useful debugging statements when objs are printed,
@@ -96,7 +96,8 @@ def delete_todo(todo_id):
 
 @app.route('/lists/<list_id>')
 def get_list_todos(list_id):
-  return render_template('index.html', data=Todo.query.filter_by(list_id = list_id).order_by('id').all()) #will display everything order by ID,order_by('id')
+  return render_template('index.html', 
+  data=Todo.query.filter_by(list_id = list_id).order_by('id').all()) #will display everything order by ID,order_by('id')
 
 @app.route('/')
 def index():
