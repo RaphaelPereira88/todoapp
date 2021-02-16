@@ -1,144 +1,107 @@
-<html>
-  <head>
-    <link rel="shortcut icon" href="#">
-    <title>Todo App</title>
-    <style>
-      .hidden {                                        
-        display: none;
-      }
-      ul {
-        list-style: none;
-        padding: 0;
-        margin: 0;
-        width: 200px;
-      }
-      li {
-        clear: both;
-      }
-      li button {
-        -webkit-appearance: none;
-        border: none;
-        outline: none;
-        color: red;
-        float: right;
-        cursor: pointer;
-        font-size: 20px;
-      }
-      .lists-wrapper, .todos-wrapper {
-        display: inline-block;
-        vertical-align: top;
-      }
-    </style>
-  </head>
+from flask import Flask, render_template, request, redirect, url_for, jsonify, abort
+from flask_sqlalchemy import SQLAlchemy
+from flask_migrate import Migrate
+import sys
+
+                                            #create an app
+app = Flask(__name__)
+app.config['SQLALCHEMY_DATABASE_URI'] = 'postgres://postgres:raphael@localhost:5432/todoapp'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+db = SQLAlchemy(app)
+
+                                            # allows use of Flask database migrate commands to initialize, upgrade and downgrade migrations
+migrate = Migrate(app, db)                  # links up Flask app and SQLAlchemy db instance
+
+                                            # models to create and manage to add app functionality?
+class Todo(db.Model):                       # to link to SQLAlchemy, class should inherit from db.model
+  __tablename__ = 'todos'
+  id = db.Column(db.Integer, primary_key=True)
+  description = db.Column(db.String(), nullable=False)
+  completed = db.Column(db.Boolean, nullable=True)
+  list_id = db.Column(db.Integer, db.ForeignKey('todolists.id'), nullable= False )
+
+                                            # to give useful debugging statements when objs are printed,
+                                            # we can define __repr__ to return a to do with the id and desc
+
+  def __repr__(self):
+    return f'<Todo {self.id} {self.description}>'
+
+                                            # db.create_all() is no longer needed with migrationsd
+                                            # sync up models with db using db.create_all
+                                            #db.create_all()  # ensures tables are created for all models declared
+
+                                            # create url and url handler on our server, by defining route that listens to todos/create
+
+class Todolist(db.Model):
+  __tablename__ = 'todolists'
+  id = db.Column(db.Integer, primary_key=True)
+  name = db.Column(db.String(), nullable=False)
+  todos = db.relationship('Todo', backref='list', lazy =True)
 
 
-  <body>
-    <div class="lists-wrapper">
-      <ul id="lists">
-        {% for list in lists %}
-        <li>
-          <a href="/lists/{{ list.id }}">
-            {{ list.name }}
-          </a>
-        </li>
-        {% endfor %}
-      </ul>
-    </div>
-    
-    <div class="todos-wrapper">
+@app.route('/todos/create', methods=['POST'])
+def create_todo():
+  error = False
+  body = {}
+  try:                                              #to get that field description
+    description = request.get_json()['description'] # Json object  come back to us as a dictionary with key description
+                                                    # use description to create new todo object
+    todo = Todo(description=description, completed=False ) #create a todo and store it to our database
+    db.session.add(todo)
+    db.session.commit()
+    body['id'] = todo.id
+    body['completed'] = todo.completed
+    body['description'] = todo.description
+  except:
+    error = True
+    db.session.rollback()
+                                        # could be useful debugging statement, 
+    print(sys.exc_info())               # but terminal may also raise error for you
+  finally:
+    db.session.close()
+                                        # we'd now tell the controller what to render to the user, by
+                                        # telling the view to re-direct to the index route & re-show the index pg
+  if error:
+    abort (400)
+  else:
+    return jsonify(body)                # to return an useful JSON object that includes that description
+                                        #name of route handler that listens for change on the index route
 
-      <form id="form">
-        <input type="text" id="description" name="description" />
-        <input type="submit" value="Create" />
-      </form>
+@app.route('/todos/<todo_id>/set-completed', methods=['POST']) #to write <todo_id> he knows the set completed property and we aer able to use it as an argument
+def set_completed_todo(todo_id):
+  try:
+    completed = request.get_json()['completed']
+    print('completed', completed)
+    todo = Todo.query.get(todo_id)
+    todo.completed = completed
+    db.session.commit()
+  except:
+    db.session.rollback()
+  finally:
+    db.session.close()
+  return redirect(url_for('index'))     # that will wound up grabbing a fresh list of all the todo items and refreshing the page automatically
 
-      <div id="error" class="hidden">Something went wrong!</div>     <!--in case of error, this message, not show show by default-->
-      
-      <ul id="todos">
-                                 <!-- Jinja for loop-->
-        {% for todo in todos %}
-                                 <!-- says for every item inside li item, we can repeat li item-->
-                                 <!-- description includes successful json response from server-->
-        <li>                     <!-- we bound data_id to "{{todo.id}}" to define data attribute as ID -->
-          <input class="check-completed" data-id="{{ todo.id }}" 
-          type="checkbox" {% if todo.completed %}checked {% endif %} />{{ todo.description }}
-          <button class= "delete-button" data-id="{{ todo.id}}">&cross;</button>
-        </li>
-        {% endfor %}
-      </ul>
 
-    </div>
-                                  <!-- implementing async fetch logic-->
-    <script>
-      const checkboxes = document.querySelectorAll('.check-completed');
-      for (let i = 0; i < checkboxes.length; i++) {
-        const checkbox = checkboxes[i];
-        checkbox.onchange = function(e) {
-          //console.log('event', e);            just use to retrieve that data below :e.target.dataset['id']          
-          const newCompleted = e.target.checked;
-          const todoId = e.target.dataset['id'];   //fetch: to make a request to the server ,todoID from app.py added
-                                                            
-          fetch('/todos/' + todoId + '/set-completed', {
-            method: 'POST',
-            body: JSON.stringify({
-              'completed': newCompleted
-            }),
-            headers: {
-              'Content-Type': 'application/json'              //since it's Json that we re sending over we need to specify content type
-            }
-          })
-          .then(function() {
-            document.getElementById('error').className = 'hidden'; 
-          })
-          .catch(function() {
-            document.getElementById('error').className = '';
-          })
-        }
-      }  
-                                                               //to send automatically information to the server
-      document.getElementById('form').onsubmit = function(e) {
-        e.preventDefault();   
-                                                            //default behaviour 
-                                                            //send post request asynchronously using fetch      
-                                                            //we want to send a body of information that iclude the input when we hit Submit                      
-        fetch('/todos/create', {                            
-          method: 'POST',
-          body: JSON.stringify({                            
-            'description': document.getElementById('description').value
-          }),
-                                                            //since it's Json that we re sending over we need to specify content type
-          headers: {                                         
-            'Content-Type': 'application/json'
-          }
-        })                                                  // to analyse the json response and return it 
-        .then(function(response) {                           
-          return response.json();
-        })                                                  //to manipulate the json response, to create the new object , we need to append it
-        .then(function(jsonResponse) {                        
-          console.log(jsonResponse);
-          const liItem = document.createElement('LI');     //to append the new object
-          liItem.innerHTML = jsonResponse['description'];
-          document.getElementById('todos').appendChild(liItem);
-          document.getElementById('error').className = 'hidden'; 
-          window.location.reload(true);
-        })
-        .catch(function() {                                   // iand just in case there's an error, the catch function will get it and will activate the hidden class
-          document.getElementById('error').className = '';
-        })
-      }
-      const deleteBtns = document.querySelectorAll('.delete-button');
-        for (let i =0; i< deleteBtns.length; i++) { 
-          const btn= deleteBtns[i];
-          btn.onclick = function(e){
-            const todoId = e.target.dataset['id'];
-            fetch('/todos/' + todoId, {
-              method:'DELETE'
-            })
-            .then (function(jsonResponse) {
-              window.location.reload(true);
-            })
-          }
-        }
-    </script>
-  </body>
-</html>
+@app.route('/todos/<todo_id>', methods=['DELETE'])
+def delete_todo(todo_id):
+  try:
+    Todo.query.filter_by(id=todo_id).delete()
+    db.session.commit()
+  except:
+    db.session.rollback()
+  finally:
+    db.session.close()
+    return jsonify({ 'success': True })
+
+
+@app.route('/lists/<list_id>')
+def get_list_todos(list_id):
+  return render_template('index.html', 
+  data=Todo.query.filter_by(list_id = list_id).order_by('id').all()
+  )
+
+
+
+@app.route('/')
+def index():
+  return redirect(url_for('get_list_todos', list_id =1))
