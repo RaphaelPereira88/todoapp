@@ -3,105 +3,199 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 import sys
 
-                                            #create an app
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'postgres://postgres:raphael@localhost:5432/todoapp'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres:raphael@localhost:5432/todoapp'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
-                                            # allows use of Flask database migrate commands to initialize, upgrade and downgrade migrations
-migrate = Migrate(app, db)                  # links up Flask app and SQLAlchemy db instance
+migrate = Migrate(app, db)
 
-                                            # models to create and manage to add app functionality?
-class Todo(db.Model):                       # to link to SQLAlchemy, class should inherit from db.model
-  __tablename__ = 'todos'
-  id = db.Column(db.Integer, primary_key=True)
-  description = db.Column(db.String(), nullable=False)
-  completed = db.Column(db.Boolean, nullable=True)
-  list_id = db.Column(db.Integer, db.ForeignKey('todolists.id'), nullable= False )
 
-                                            # to give useful debugging statements when objs are printed,
-                                            # we can define __repr__ to return a to do with the id and desc
+class Todo(db.Model):
+    __tablename__ = "todos"
+    id = db.Column(db.Integer, primary_key=True)
+    description = db.Column(db.String(), nullable=False)
+    complete = db.Column(db.Boolean, nullable=False, default=False)
+    list_id = db.Column(db.Integer, db.ForeignKey(
+        'todolists.id'), nullable=False)
 
-  def __repr__(self):
-    return f'<Todo {self.id} {self.description}>'
+    def __repr__(self):
+        return f'<Todo ID: {self.id}, description: {self.description}, complete: {self.complete}>'
 
-                                            # db.create_all() is no longer needed with migrationsd
-                                            # sync up models with db using db.create_all
-                                            #db.create_all()  # ensures tables are created for all models declared
 
-                                            # create url and url handler on our server, by defining route that listens to todos/create
+class TodoList(db.Model):
+    __tablename__ = "todolists"
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(), nullable=False)
+    todos = db.relationship('Todo', backref='list', lazy=True)
 
-class Todolist(db.Model):
-  __tablename__ = 'todolists'
-  id = db.Column(db.Integer, primary_key=True)
-  name = db.Column(db.String(), nullable=False)
-  todos = db.relationship('Todo', backref='list', lazy =True)
+    def __repr__(self):
+        return f'<TodoList ID: {self.id}, name: {self.name}, todos: {self.todos}>'
 
 
 @app.route('/todos/create', methods=['POST'])
 def create_todo():
-  error = False
-  body = {}
-  try:                                              #to get that field description
-    description = request.get_json()['description'] # Json object  come back to us as a dictionary with key description
-                                                    # use description to create new todo object
-    todo = Todo(description=description, completed=False ) #create a todo and store it to our database
-    db.session.add(todo)
-    db.session.commit()
-    body['id'] = todo.id
-    body['completed'] = todo.completed
-    body['description'] = todo.description
-  except:
-    error = True
-    db.session.rollback()
-                                        # could be useful debugging statement, 
-    print(sys.exc_info())               # but terminal may also raise error for you
-  finally:
-    db.session.close()
-                                        # we'd now tell the controller what to render to the user, by
-                                        # telling the view to re-direct to the index route & re-show the index pg
-  if error:
-    abort (400)
-  else:
-    return jsonify(body)                # to return an useful JSON object that includes that description
-                                        #name of route handler that listens for change on the index route
+    error = False
+    body = {}
+    try:
+        description = request.get_json()['description']
+        list_id = request.get_json()['list_id']
+        todo = Todo(description=description, complete=False, list_id=list_id)
+        db.session.add(todo)
+        db.session.commit()
+        body['id'] = todo.id
+        body['complete'] = todo.complete
+        body['description'] = todo.description
+    except():
+        db.session.rollback()
+        error = True
+        print(sys.exc_info())
+    finally:
+        db.session.close()
+    if error:
+        abort(500)
+    else:
+        return jsonify(body)
 
-@app.route('/todos/<todo_id>/set-completed', methods=['POST']) #to write <todo_id> he knows the set completed property and we aer able to use it as an argument
-def set_completed_todo(todo_id):
-  try:
-    completed = request.get_json()['completed']
-    print('completed', completed)
-    todo = Todo.query.get(todo_id)
-    todo.completed = completed
-    db.session.commit()
-  except:
-    db.session.rollback()
-  finally:
-    db.session.close()
-  return redirect(url_for('index'))     # that will wound up grabbing a fresh list of all the todo items and refreshing the page automatically
+@app.route('/todos/<todo_id>/set-complete', methods=['POST'])
+def update_todo(todo_id):
+    error = False
+    try:
+        complete = request.get_json()['complete']
+        todo = Todo.query.get(todo_id)
+        print('Todo: ', todo)
+        todo.complete = complete
+        db.session.commit()
+    except():
+        db.session.rollback()
+        error = True
+        print(sys.exc_info())
+    finally:
+        db.session.close()
+    if error:
+        abort(500)
+    else:
+        return redirect(url_for('index'))
 
-
-@app.route('/todos/<todo_id>', methods=['DELETE'])
+@app.route('/todos/<todo_id>/delete', methods=['DELETE'])
 def delete_todo(todo_id):
-  try:
-    Todo.query.filter_by(id=todo_id).delete()
-    db.session.commit()
-  except:
-    db.session.rollback()
-  finally:
-    db.session.close()
-    return jsonify({ 'success': True })
+    error = False
+    try:
+        #Todo.query.filter_by(id=todo_id).delete()
+        todo = Todo.query.get(todo_id)
+        db.session.delete(todo)
+        db.session.commit()
+    except():
+        db.session.rollback()
+        error = True
+    finally:
+        db.session.close()
+    if error:
+        abort(500)
+    else:
+        return jsonify({'success': True})
 
+@app.route('/todos/<todo_id>/set-completed', methods=['POST'])
+def set_completed_todo(todo_id):
+    error = False
 
-@app.route('/lists/<list_id>')
-def get_list_todos(list_id):
-  return render_template('index.html', 
-  data=Todo.query.filter_by(list_id = list_id).order_by('id').all()
-  )
+    try:
+        completed = request.get_json()['completed']
 
+        todo = Todo.query.get(todo_id)
+        todo.completed = completed
 
+        db.session.commit()
+    except:
+        db.session.rollback()
+
+        error = True
+    finally:
+        db.session.close()
+
+    if error:
+        abort(500)
+    else:
+        return '', 200
 
 @app.route('/')
 def index():
-  return redirect(url_for('get_list_todos', list_id =1))
+    return redirect(url_for('get_list_todos', list_id=1))
+
+@app.route('/lists/<list_id>')
+def get_list_todos(list_id):
+    lists = TodoList.query.all()
+    active_list = TodoList.query.get(list_id)
+    todos = Todo.query.filter_by(list_id=list_id).order_by('id').all()
+
+    return render_template('index.html', todos=todos, lists=lists, active_list=active_list)
+
+@app.route('/lists/create', methods=['POST'])
+def create_list():
+    error = False
+    body = {}
+    try:
+        name = request.get_json()['name']
+        todolist = TodoList(name=name)
+        db.session.add(todolist)
+        db.session.commit()
+        body['id'] = todolist.id
+        body['name'] = todolist.name
+    except():
+        db.session.rollback()
+        error = True
+        print(sys.exc_info)
+    finally:
+        db.session.close()
+    if error:
+        abort(500)
+    else:
+        return jsonify(body)
+
+@app.route('/lists/<list_id>/delete', methods=['DELETE'])
+def delete_list(list_id):
+    error = False
+    try:
+        list = TodoList.query.get(list_id)
+        for todo in list.todos:
+            db.session.delete(todo)
+        
+        db.session.delete(list)
+        db.session.commit()
+    except():
+        db.session.rollback()
+        error = True
+    finally:
+        db.session.close()
+    if error:
+        abort(500)
+    else:
+        return jsonify({'success': True})
+
+        
+@app.route('/lists/<list_id>/set-completed', methods=['POST'])
+def set_completed_list(list_id):
+    error = False
+
+    try:
+        list = TodoList.query.get(list_id)
+
+        for todo in list.todos:
+            todo.completed = True
+
+        db.session.commit()
+    except:
+        db.session.rollback()
+
+        error = True
+    finally:
+        db.session.close()
+
+    if error:
+        abort(500)
+    else:
+        return '', 200
+
+
+if __name__ == '__main__':
+    app.run(debug=True)
