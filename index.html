@@ -42,7 +42,8 @@
       <ul id="lists">
         {% for list in lists %}
         <li>
-          <input type="checkbox" data-id="{{ list.id }}" class="list-check-completed">
+          <input type="checkbox" data-id="{{ list.id }}" class="list-check-completed"
+          {% if list.completed %} checked {%endif%} />
           <a href="/lists/{{ list.id }}">{{ list.name }}</a>
           <button class="delete-list" data-id="{{ list.id }}">&cross;</button>
         </li>
@@ -65,7 +66,9 @@
         <ul id="todos">
           {% for todo in todos %}
           <li>
-            <input data-id="{{ todo.id }}" class="todo-check-completed" type="checkbox" name="complete" id="complete" {% if todo.completed %} checked {%endif%} />
+            <input data-id="{{ todo.id }}" class="todo-check-completed" 
+            type="checkbox" name="completed" id="completed"
+             {% if todo.completed %} checked {%endif%} />
             {{ todo.description }}
             <button class="delete-todo" data-id="{{ todo.id }}">&cross;</button>
           </li>
@@ -79,6 +82,7 @@
       const listCheckboxes = document.querySelectorAll('.list-check-completed');
       for (let i = 0; i < listCheckboxes.length; i++) {
           const checkbox = listCheckboxes[i];
+          
 
           checkbox.onchange = function (e) {
               if (e.target.checked) {
